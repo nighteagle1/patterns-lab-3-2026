@@ -105,3 +105,102 @@ python -m pytest
 5. Почему созданное вами решение является Factory Method, а не Simple Factory?
 6. Как добавить новый способ вывода, не изменяя существующий код журналирования?
 7. Какие альтернативы вы рассматривали?
+
+## Описание решения
+
+### Структура
+
+```text
+app.py                  # клиентский код
+logging_app/
+  levels.py             # LogLevel, InvalidLogLevelError
+  formatter.py          # MessageFormatter (формат сообщения, подменяемые часы)
+  strategies.py         # OutputStrategy, ConsoleStrategy, FileStrategy, UpperFileStrategy
+  logger.py             # Logger (Context)
+  creators.py           # LoggerCreator и конкретные создатели (Factory Method)
+legacy/                 # исходная реализация (не изменялась)
+tests/                  # тесты legacy и новой архитектуры
+docs/architecture.mmd   # структурная диаграмма (Mermaid)
+```
+
+Диаграмма: [docs/architecture.mmd](docs/architecture.mmd).
+
+### Распределение обязанностей
+
+В `LegacyLogger` были смешаны форматирование, выбор способа вывода, сам вывод и работа с файловой системой. Теперь:
+
+- форматирование — `MessageFormatter`;
+- вывод — стратегии;
+- связывание форматирования и вывода — `Logger`;
+- создание стратегий — создатели (`LoggerCreator` и его наследники);
+- проверка уровня — `LogLevel.parse`.
+
+### Роли участников Strategy
+
+| Роль | Класс |
+|---|---|
+| Strategy (интерфейс) | `OutputStrategy` |
+| ConcreteStrategy | `ConsoleStrategy`, `FileStrategy`, `UpperFileStrategy` |
+| Context | `Logger` |
+| Client | `app.py` |
+
+`Logger` хранит объект `OutputStrategy` и делегирует ему вывод; ветвления по типу вывода в нём нет.
+
+### Роли участников Factory Method
+
+| Роль | Класс |
+|---|---|
+| Product (интерфейс) | `OutputStrategy` |
+| ConcreteProduct | `ConsoleStrategy`, `FileStrategy`, `UpperFileStrategy` |
+| Creator | `LoggerCreator` (фабричный метод `create_strategy()`, метод `create_logger()`) |
+| ConcreteCreator | `ConsoleLoggerCreator`, `FileLoggerCreator`, `UpperFileLoggerCreator` |
+| Client | `app.py` |
+
+### Формат сообщения и уровни
+
+`YYYY-MM-DD HH:mm:ss [LEVEL] Message`. Допустимые уровни: `TRACE`, `INFO`, `WARN`, `ERROR`, `FATAL`.
+Уровень можно передать как `LogLevel` или как строку с точным названием. Иначе выбрасывается `InvalidLogLevelError` (наследник `ValueError`), и в этом случае ничего не выводится.
+
+Как и в legacy, `UpperFileStrategy` переводит в верхний регистр всю строку (включая уровень), а `Logger.log()` возвращает исходную строку без изменения регистра.
+
+### Запуск
+
+```bash
+python -m pip install -e ".[dev]"
+python -m pytest
+python app.py
+```
+
+Пример использования:
+
+```python
+from logging_app import FileLoggerCreator, LogLevel
+
+logger = FileLoggerCreator("logs/app.log").create_logger()
+logger.log(LogLevel.INFO, "Application started")
+```
+
+## Ответы на контрольные вопросы
+
+1. **Какую проектную проблему решает Strategy в вашей реализации?**
+   Устраняет разветвление `if/elif` по строковому параметру `output` в `LegacyLogger.log()`. Способ вывода стал отдельным взаимозаменяемым объектом, а `Logger` не меняется при добавлении новых способов (принцип открытости/закрытости). Заодно разделены обязанности: форматирование, вывод и работа с файлами больше не смешаны в одном классе.
+
+2. **Чем Strategy отличается от обычного набора функций?**
+   Стратегия — объект с общим интерфейсом, поэтому она может хранить состояние (путь к файлу), иметь несколько методов, наследоваться (`UpperFileStrategy` расширяет `FileStrategy`) и проверяться как тип. Контекст зависит от абстракции, а не от конкретной функции. Набор функций тоже можно использовать как стратегии, но тогда нет явного контракта, а их выбор часто возвращается к словарю или `if`.
+
+3. **Где находится контекст шаблона Strategy?**
+   Контекст — класс `Logger` (`logging_app/logger.py`). Он получает стратегию в конструкторе и делегирует ей `write()`.
+
+4. **Какую обязанность берёт на себя Factory Method?**
+   Создание конкретной стратегии. Метод `create_strategy()` объявлен в `LoggerCreator` и переопределяется в подклассах. Клиентский код и `Logger` не знают конкретных классов стратегий и не вызывают их конструкторы.
+
+5. **Почему созданное вами решение является Factory Method, а не Simple Factory?**
+   В Simple Factory единственный метод или класс выбирает продукт по параметру, обычно через `if/elif`, и при добавлении продукта его приходится изменять. Здесь есть иерархия создателей: базовый `LoggerCreator` определяет алгоритм `create_logger()` и вызывает абстрактный `create_strategy()`, а какой продукт создаётся, решает подкласс. Выбор происходит полиморфизмом, а не условием.
+
+6. **Как добавить новый способ вывода, не изменяя существующий код журналирования?**
+   Достаточно написать новый класс-наследник `OutputStrategy` (например, `SyslogStrategy`) и соответствующий `LoggerCreator` с переопределённым `create_strategy()`. `Logger`, `MessageFormatter` и существующие стратегии и создатели не изменяются. Меняется только клиентский код, который выбирает нужного создателя.
+
+7. **Какие альтернативы вы рассматривали?**
+   - Оставить `if/elif` в `Logger` или заменить его словарём функций — запрещено заданием и по-прежнему требует правки `Logger` при расширении.
+   - Передавать в `Logger` функции вместо объектов — теряется явный контракт и возможность хранить состояние.
+   - Simple Factory (одна функция `create_strategy(name)`) — по сути возвращает `if/elif`, только в другом месте.

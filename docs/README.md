@@ -1,12 +1,8 @@
 # Диаграмма
 
-Поместите сюда структурную диаграмму итогового решения.
+Структурная диаграмма решения (Mermaid): [diagram.md](diagram.md).
 
-Допустимые форматы:
+Участники шаблонов:
 
-- `architecture.puml`;
-- `architecture.mmd`;
-- изображение, экспортированное из diagrams.net;
-- другой согласованный с преподавателем формат.
-
-На диаграмме должны быть различимы участники шаблонов Strategy и Factory Method.
+- **Strategy**: `OutputStrategy` (интерфейс), `ConsoleStrategy`, `FileStrategy`, `UpperFileStrategy` (конкретные стратегии), `Logger` (контекст).
+- **Factory Method**: `LoggerCreator` (создатель с фабричным методом `create_strategy()`), `ConsoleLoggerCreator`, `FileLoggerCreator`, `UpperFileLoggerCreator` (конкретные создатели).

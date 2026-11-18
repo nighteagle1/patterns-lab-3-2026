@@ -1,11 +1,17 @@
-from legacy import LegacyLogger, LogLevel
+from logging_app import (
+    ConsoleLoggerCreator,
+    FileLoggerCreator,
+    LogLevel,
+    UpperFileLoggerCreator,
+)
+
+LOG_FILE = "logs/app.log"
 
 
 def main() -> None:
-    logger = LegacyLogger("logs/app.log")
-    logger.log(LogLevel.INFO, "Application started", output="console")
-    logger.log(LogLevel.WARN, "Low disk space", output="file")
-    logger.log(LogLevel.ERROR, "Example error", output="upper_file")
+    ConsoleLoggerCreator().create_logger().log(LogLevel.INFO, "Application started")
+    FileLoggerCreator(LOG_FILE).create_logger().log(LogLevel.WARN, "Low disk space")
+    UpperFileLoggerCreator(LOG_FILE).create_logger().log(LogLevel.ERROR, "Example error")
 
 
 if __name__ == "__main__":
